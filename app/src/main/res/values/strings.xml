@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">MrJangSanBum</string>
+    <string name="default_rate">1.5</string>
+    <string name="stop_recording">stop recording</string>
+</resources>
