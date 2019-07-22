@@ -2,6 +2,9 @@ package com.digitalzone.mrjangsanbum;
 
 import com.digitalzone.mrjangsanbum.AudioStreamPlayer;
 
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+
 public interface OnAudioStreamInterface
 {
     public void onAudioPlayerStart(AudioStreamPlayer player);
@@ -17,4 +20,6 @@ public interface OnAudioStreamInterface
     public void onAudioPlayerDuration(int totalSec);
 
     public void onAudioPlayerCurrentTime(int sec);
+
+    public void onAudioPlayerPCMData(ByteBuffer pcmData);
 }

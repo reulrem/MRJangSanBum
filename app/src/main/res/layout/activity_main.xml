@@ -4,11 +4,11 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
+    android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/textview"
+    <Button
+        android:id="@+id/start_btn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
@@ -18,12 +18,24 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:textAlignment="center"
         android:text="@string/default_rate"/>
 
-    <TextView
-        android:id="@+id/stop_text"
+    <Button
+        android:id="@+id/stop_btn"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_gravity="center"
         android:text="@string/stop_recording"/>
+
+
+    <ImageView
+
+        android:id="@+id/ImageView01"
+        android:layout_gravity="bottom"
+
+        android:layout_width="match_parent"
+
+        android:layout_height="wrap_content" />
 
 </LinearLayout>

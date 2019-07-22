@@ -1,30 +1,52 @@
 package com.digitalzone.mrjangsanbum;
 
-import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
-import android.content.Intent;
-import android.content.pm.PackageManager;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
-import android.media.*;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.media.MediaCodec;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Message;
 import android.provider.MediaStore;
-import android.support.v4.content.ContextCompat;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.webkit.MimeTypeMap;
+import android.widget.Button;
 import android.widget.EditText;
-import android.widget.TextView;
+import android.widget.ImageView;
+
+//import org.apache.commons.math3.complex.Complex;
+//import org.apache.commons.math3.transform.FastFourierTransformer;
+//import org.apache.commons.math3.transform.DftNormalization;
+//import org.apache.commons.math3.transform.TransformType;
+import org.apache.commons.math.complex.Complex;
+import org.apache.commons.math.transform.FastFourierTransformer;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity implements OnAudioStreamInterface{
 
-    private TextView t ,st;
+    private Button t ,st;
     private EditText rate;
     String TAG = "jangsanbum";
     AudioStreamPlayer mAudioPlayer = null;
+
+    ImageView imageView;
+    Bitmap bitmap;
+    Canvas canvas;
+    Paint paint;
 
     private Context thisActivity;
     private OnAudioStreamInterface thisStream;
@@ -34,6 +56,120 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
     private String musicName = "";
 
     private double editRate;
+
+    List<byte[]> collectByte = new ArrayList<>();
+
+    private DrawHZHandler handler = new DrawHZHandler();
+
+    @SuppressLint("HandlerLeak")
+    class DrawHZHandler extends Handler {
+        @Override
+        public void handleMessage(Message msg) {
+
+        }
+
+        public void printHZ() {
+
+            try{
+
+                FastFourierTransformer fft = new FastFourierTransformer();
+
+                for(int i = 0; i < collectByte.size(); i++){
+
+//                byte [] pcmByte = new byte[pcmBuffer.limit()];
+//                pcmBuffer.get(pcmByte,0,pcmByte.length);
+//                Log.d(TAG,"pcmBuffer.limit() : " + pcmBuffer.limit());
+//
+//                for(int j = 0; j < pcmByte.length; j++){
+//                    Log.d(TAG,"pcmByte [" + j + "] : " + pcmByte[j]);
+//                }
+
+                    ByteBuffer bb = ByteBuffer.wrap(collectByte.get(i));
+
+                    bb.rewind();
+
+                    double[] pcmData = new double[8192];
+
+                    for(int y= 0; bb.hasRemaining();y++) {
+
+                        short s = bb.getShort();
+
+                        pcmData[ y ] = (double)s/Short.MAX_VALUE;
+                        pcmData[ y ] = (new Short(s)).doubleValue();
+
+//                        long dB = (long) (20 * Math.log10(Math.abs(pcmData[ y ] ) / 32768));
+//                        Log.d(TAG,"데시벨 : " + dB);
+                    }
+
+                    Complex[] cmplx= fft.transform(pcmData);
+
+                    double real;
+                    double im;
+                    double mag[] = new double[cmplx.length];
+
+                    for(int j = 0; j < cmplx.length / 2; j++){
+                        real = cmplx[j].getReal();
+                        im = cmplx[j].getImaginary();
+                        mag[j] = Math.sqrt((real * real) + (im*im));
+                    }
+
+                    double peak = -1.0;
+                    int index=-1;
+                    int j = 0;
+
+                    for(j = 0; j < cmplx.length; j++){
+
+                        if(peak < mag[j]){
+                            index = j;
+                            peak= mag[j];
+                        }
+
+                    }
+
+                    double frequency = (double) (44100 * index) / j;
+                    Log.d(TAG,"collectByte.get(" + i + ") : " + collectByte.get(i).length);
+                    Log.d(TAG,"Index : "+index+", Frequency : "+ frequency +", peak : " + peak + ", length : " + j);
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+
+        public void createHZ(){
+
+            try{
+
+                final long kTimeOutUs = 10000;
+                MediaExtractor mExtractor = new MediaExtractor();
+                AssetFileDescriptor afd = thisActivity.getResources().openRawResourceFd(R.raw.nightmare);
+                try {
+                    mExtractor.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
+                }
+
+                MediaFormat format = mExtractor.getTrackFormat(0);
+                String mime = format.getString(MediaFormat.KEY_MIME);
+                MediaCodec mMediaCodec = MediaCodec.createDecoderByType(mime);
+                MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+                int outputBufIndex = mMediaCodec.dequeueOutputBuffer(info, kTimeOutUs);
+                ByteBuffer buf;
+
+                if(Build.VERSION.SDK_INT > 21){
+                    buf = mMediaCodec.getOutputBuffer(outputBufIndex);
+                }else{
+                    buf = mMediaCodec.getOutputBuffers()[outputBufIndex];
+                }
+
+                final byte[] chunk = new byte[info.size];
+                buf.get(chunk);
+
+                collectByte.add(chunk);
+
+            }catch (IOException e) {e.printStackTrace();}
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,7 +183,7 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
 //        for (int i = 0; i < numSamples; ++i){
 //            samples[i] = sin(2 * PI * i / (sampleRate )); // Sine wave
 //            buffer[i] = (short) (samples[i] * Short.MAX_VALUE);  // Higher amplitude increases volume
-//            Log.d(TAG,"sample : " + samples[i]);
+//            Log.d(TAG,"sample : " + samples[i];
 //            Log.d(TAG,"buffer : " + buffer[i]);
 //        }
 
@@ -56,19 +192,28 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
 
         rate = findViewById(R.id.rate);
 
-        t = findViewById(R.id.textview);
-        st = findViewById(R.id.stop_text);
+        imageView = (ImageView)findViewById(R.id.ImageView01);
+        bitmap = Bitmap.createBitmap((int)256, (int)100, Bitmap.Config.ARGB_8888);
+        canvas = new Canvas(bitmap);
+        paint = new Paint();
+
+        paint.setColor(Color.GREEN);
+        imageView.setImageBitmap(bitmap);
+
+        t = findViewById(R.id.start_btn);
+        st = findViewById(R.id.stop_btn);
 
         t.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
 
-
                 try{
-
                     editRate = Double.valueOf(String.valueOf(rate.getText()));
-                }catch(NumberFormatException e) {
 
+                    if(editRate == 0){
+                        throw new NumberFormatException();
+                    }
+                }catch(NumberFormatException e) {
                     editRate = 1.0;
                     e.printStackTrace();
                 }
@@ -89,106 +234,52 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
 //                    }
 //                }
 
-                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M && ContextCompat.checkSelfPermission(thisActivity, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                    String[] rs = getMusicAbsolutePath();
 
-                    String mp3Path = rs[(int) (Math.random() * (rs.length - 1))];
-
-                    String r = mp3Path.split("/")[mp3Path.split("/").length-1];
-
-                    MediaExtractor mExtractor = new MediaExtractor();
-                    try {
-                        mExtractor.setDataSource(r);
-                    } catch (Exception e) {
-                        return;
-                    }
-
-                    MediaFormat format = mExtractor.getTrackFormat(0);
-                    String mime = format.getString(MediaFormat.KEY_MIME);
-                    long duration = format.getLong(MediaFormat.KEY_DURATION);
-                    int totalSec = (int) (duration / 1000 / 1000);
-                    int min = totalSec / 60;
-                    int sec = totalSec % 60;
-                    int sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-
-                    Log.d(TAG, "song name : " + r);
-                    Log.d(TAG, "mime : " + mime);
-                    Log.d(TAG, "min : " + min);
-                    Log.d(TAG, "sec : " + sec);
-                    Log.d(TAG, "sampleRate : " + sampleRate);
-                    musicName = mp3Path;
-
-
-                    runOnUiThread(new Runnable()
-                    {
-
-                        @Override
-                        public void run()
-                        {
-                            t.setText(musicName);
-                        }
-                    });
-
-//                    try {
+                //실제 핸드폰에서 해볼것
+//                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.M && ContextCompat.checkSelfPermission(thisActivity, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+//                    String[] rs = getMusicAbsolutePath();
 //
-////                        AudioStreamPlayer asp = new AudioStreamPlayer();
-////                        asp.setOnAudioStreamInterface(thisStream);
-////                        asp.play();
+//                    String mp3Path = rs[(int) (Math.random() * (rs.length - 1))];
 //
-////                        byte[] buf = new byte[1];
-////                        AudioFormat.Builder ab = new AudioFormat.Builder();
-////
-////                        AudioFormat af = ab.build();
-////
-////                        Log.d(TAG, "getChannelCount() : " + af.getChannelCount());
-////                        Log.d(TAG, "getChannelIndexMask() : " + af.getChannelIndexMask());
-////                        Log.d(TAG, "getChannelMask() : " + af.getChannelMask());
-////                        Log.d(TAG, "getEncoding() : " + af.getEncoding());
-////                        Log.d(TAG, "getSampleRate() : " + af.getSampleRate());
-////
-////                        AudioManager am = (AudioManager) getBaseContext().getSystemService(Context.AUDIO_SERVICE);
+//                    final String r = mp3Path.split("/")[mp3Path.split("/").length-1];
 //
-////                        AudioTrack audioTrack = new AudioTrack(
-////
-////                                AudioManager.STREAM_MUSIC, (int) (outfrequency * 1.5),
-////
-////                                channelConfiguration, audioEncoding, bufferSize,
-////
-////                                AudioTrack.MODE_STREAM);
-//
-////                        SourceDataLine sdl = AudioSystem.getSourceDataLine( af );
-////                        sdl = AudioSystem.getSourceDataLine( af );
-////                        sdl.open( af );
-////                        sdl.start();
-////                        for( int i = 0; i < 1000 * (float )44100 / 1000; i++ ) {
-////                            double angle = i / ( (float )44100 / 440 ) * 2.0 * Math.PI;
-////                            buf[ 0 ] = (byte )( Math.sin( angle ) * 100 );
-////                            sdl.write( buf, 0, 1 );
-////                        }
-////                        sdl.drain();
-////                        sdl.stop();
-////                        sdl.close();
-//
-////                        Collections.frequency(new ArrayList<String>(),"");
-//                    } catch (Exception e) {
-//                        e.printStackTrace();
-//                    }
-                }
+//                    runOnUiThread(new Runnable()
+//                    {
+//                        @Override
+//                        public void run()
+//                        {
+//                            t.setText(r);
+//                        }
+//                    });
+//                }
 
 //                Log.d(TAG,thisActivity.getResources().openRawResourceFd(R.raw.nightmare).getExtras().toString());
-                if(!isPlay){
-                    play();
-                }
 
-                else{
-                    if (mAudioPlayer != null && mAudioPlayer.getState() == AudioStreamPlayer.State.Pause)
-                    {
+                if (t.isSelected()) {
+                    if (mAudioPlayer != null && mAudioPlayer.getState() == AudioStreamPlayer.State.Pause) {
                         mAudioPlayer.pauseToPlay();
                     }
-                    else
-                    {
+                    else {
                         pause();
                     }
+                }
+                else {
+//					String[] rs = getMusicAbsolutePath();
+//
+//					String mp3Path = rs[(int) (Math.random() * (rs.length - 1))];
+//
+//					for(int i =0; i < rs.length; i++){
+//						if(rs[i].contains(musicNameSetter.getText())){
+//							mp3Path = rs[i];
+//						}
+//					}
+//
+//					final String r = mp3Path.split("/")[mp3Path.split("/").length-1];
+//
+//					mp3File.setText(r);
+//
+//					Log.d(TAG,"name : " + r);
+                    play();
                 }
 
                 isPlay = !isPlay;
@@ -418,98 +509,103 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
             }
         });
 
-
         st.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 stop();
-
-                isPlay = false;
             }
         });
-
-//        AudioTrack audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
-//                sampleRate, AudioFormat.CHANNEL_OUT_MONO,
-//                AudioFormat.ENCODING_PCM_16BIT, buffer.length,
-//                AudioTrack.MODE_STATIC);
-//
-//        audioTrack.write(buffer, 0, buffer.length);
-//        audioTrack.play();
     }
 
-    private void pause()
-    {
-        if (this.mAudioPlayer != null)
-        {
+    private void pause() {
+        if (this.mAudioPlayer != null) {
             this.mAudioPlayer.pause();
         }
     }
 
-    private void play()
-    {
+    private void play() {
         releaseAudioPlayer();
 
-        mAudioPlayer = new AudioStreamPlayer(editRate);
+        mAudioPlayer = new AudioStreamPlayer(this);
+        mAudioPlayer.setUrlString(musicName);
         mAudioPlayer.setOnAudioStreamInterface(this);
 
-        mAudioPlayer.setUrlString(musicName);
+        mAudioPlayer.play();
+    }
 
-        try
-        {
-            mAudioPlayer.play();
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
+    private void releaseAudioPlayer() {
+        if (this.mAudioPlayer != null) {
+            this.mAudioPlayer.stop();
+            this.mAudioPlayer.release();
+            this.mAudioPlayer = null;
         }
     }
 
-    private void releaseAudioPlayer()
-    {
-        if (mAudioPlayer != null)
-        {
-            mAudioPlayer.stop();
-            mAudioPlayer.release();
-            mAudioPlayer = null;
-
-        }
-    }
-
-    private void stop()
-    {
-        if (this.mAudioPlayer != null)
-        {
+    private void stop() {
+        if (this.mAudioPlayer != null) {
             this.mAudioPlayer.stop();
         }
     }
 
     @Override
-    protected void onDestroy()
-    {
+    protected void onDestroy() {
         super.onDestroy();
 
         stop();
     }
 
     @Override
-    public void onAudioPlayerStart(AudioStreamPlayer player)
-    {
-        runOnUiThread(new Runnable()
-        {
+    public void onAudioPlayerPCMData(ByteBuffer pcmBuffer) {
+
+        if(pcmBuffer.hasRemaining()){
+            Log.d(TAG,"onAudioPlayerPCMData pcmData has data");
+        }
+        else{
+            Log.d(TAG,"onAudioPlayerPCMData pcmData hasn't data");
+        }
+
+//        double[] pcmData = new double[8192];
+//
+//        int y = 0;
+//
+//        for( ; pcmBuffer.remaining() > 2;) {
+//            short s = pcmBuffer.getShort();
+//
+//            System.out.println("s : " + s);
+//            pcmData[ y ] = (new Short(s)).doubleValue();
+//            System.out.println("pcmData[ y ] : " + pcmData[ y ]);
+//            ++y;
+//        }
+        int length = pcmBuffer.remaining();
+        Log.d(TAG,"length : " + length);
+        byte[] b = new byte[length];
+
+        pcmBuffer.get(b);
+
+        Log.d(TAG,"b[0] : " + b[0]);
+
+        collectByte.add(b);
+
+    }
+
+    @Override
+    public void onAudioPlayerStart(AudioStreamPlayer player) {
+
+        runOnUiThread(new Runnable() {
 
             @Override
-            public void run()
-            {
+            public void run() {
                 //updatePlayer(AudioStreamPlayer.State.Playing);
             }
         });
     }
 
     @Override
-    public void onAudioPlayerStop(AudioStreamPlayer player)
-    {
-        runOnUiThread(new Runnable()
-        {
+    public void onAudioPlayerStop(AudioStreamPlayer player) {
+
+        handler.printHZ();
+
+        runOnUiThread(new Runnable() {
 
             @Override
             public void run()
@@ -521,29 +617,23 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
     }
 
     @Override
-    public void onAudioPlayerError(AudioStreamPlayer player)
-    {
-        runOnUiThread(new Runnable()
-        {
+    public void onAudioPlayerError(AudioStreamPlayer player) {
+        handler.printHZ();
 
+        runOnUiThread(new Runnable() {
             @Override
-            public void run()
-            {
+            public void run() {
                 //updatePlayer(AudioStreamPlayer.State.Stopped);
             }
         });
-
     }
 
     @Override
-    public void onAudioPlayerBuffering(AudioStreamPlayer player)
-    {
-        runOnUiThread(new Runnable()
-        {
+    public void onAudioPlayerBuffering(AudioStreamPlayer player) {
+        runOnUiThread(new Runnable() {
 
             @Override
-            public void run()
-            {
+            public void run() {
                 //updatePlayer(AudioStreamPlayer.State.Buffering);
             }
         });
@@ -551,8 +641,7 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
     }
 
     @Override
-    public void onAudioPlayerDuration(int totalSec)
-    {
+    public void onAudioPlayerDuration(int totalSec) {
         int h =0;
         if(totalSec >= 3600){
             h = totalSec /= 60;
@@ -590,8 +679,7 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
     }
 
     @Override
-    public void onAudioPlayerCurrentTime(final int sec)
-    {
+    public void onAudioPlayerCurrentTime(final int sec) {
         int m = sec / 60;
         int s = sec % 60;
 
@@ -616,8 +704,7 @@ public class MainActivity extends Activity implements OnAudioStreamInterface{
     }
 
     @Override
-    public void onAudioPlayerPause(AudioStreamPlayer player)
-    {
+    public void onAudioPlayerPause(AudioStreamPlayer player) {
 //        runOnUiThread(new Runnable()
 //        {
 //            @Override

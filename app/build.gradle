@@ -25,6 +25,9 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+    implementation 'org.apache.commons:commons-math3:3.6.1'
+    implementation 'org.apache.commons:commons-math:2.2'
+    implementation 'org.bytedeco:fftw-platform:3.3.8-1.5'
 //    implementation 'com.github.DASAR:Minim-Android:a73b596916'
 //    implementation 'ddf.minim:ddf.minim:2.2.0'
 }
